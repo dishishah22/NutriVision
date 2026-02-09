@@ -12,7 +12,7 @@ class AppConfigServer extends ChangeNotifier {
   Locale get locale => _locale;
 
   // Updated to local PC IP for physical device connectivity
-  final String apiUrl = "http://10.110.80.87:8000";
+  final String apiUrl = "http://10.110.3.21:8500";
 
   bool get isDarkMode => _themeMode == ThemeMode.dark;
 
@@ -29,7 +29,7 @@ class AppConfigServer extends ChangeNotifier {
   // Simple Localization Map
   static final Map<String, Map<String, String>> _localizedValues = {
     'en': {
-      'app_name': 'NutriScan',
+      'app_name': 'NutriVision',
       'profile': 'Profile',
       'home': 'Home',
       'stats': 'Stats',
@@ -98,7 +98,7 @@ class AppConfigServer extends ChangeNotifier {
       'already_have_account': 'Already have an account?',
       'required': 'Required',
       'min_6_chars': 'Min 6 chars',
-      'spectrum': 'SPECTRUM',
+      'spectrum': 'NUTRIVISION',
       'privacy_title': 'Privacy & Security',
       'privacy_desc': 'Your data is encrypted and stored securely. We do not share your health data with third parties without your explicit consent.',
       'security_level': 'Security Level',
@@ -167,7 +167,7 @@ class AppConfigServer extends ChangeNotifier {
       'email_address': 'Email Address',
       'password': 'Password',
       'google_continue': 'Continue with Google',
-      'new_to_spectrum': 'New to Spectrum?',
+      'new_to_spectrum': 'New to NutriVision?',
       'maintain_weight': 'Maintain Weight',
       'calorie_deficit': 'Calorie deficit for sustainable weight loss',
       'high_protein': 'High protein for muscle growth',
@@ -202,7 +202,7 @@ class AppConfigServer extends ChangeNotifier {
       'tip_3': 'Sleep for 7-8 hours to improve recovery and focus.',
     },
     'hi': {
-      'app_name': 'न्यूट्रीस्कैन',
+      'app_name': 'न्यूट्रीविज़न',
       'profile': 'प्रोफ़ाइल',
       'home': 'होम',
       'stats': 'आँकड़े',
@@ -271,7 +271,7 @@ class AppConfigServer extends ChangeNotifier {
       'already_have_account': 'क्या आपके पास पहले से एक खाता है?',
       'required': 'आवश्यक',
       'min_6_chars': 'न्यूनतम 6 अक्षर',
-      'spectrum': 'स्पेक्ट्रम',
+      'spectrum': 'न्यूट्रीविज़न',
       'privacy_title': 'गोपनीयता और सुरक्षा',
       'privacy_desc': 'आपका डेटा एन्क्रिप्टेड और सुरक्षित रूप से संग्रहीत है। हम आपकी स्पष्ट सहमति के बिना तीसरे पक्ष के साथ आपका स्वास्थ्य डेटा साझा नहीं करते हैं।',
       'security_level': 'सुरक्षा स्तर',
@@ -354,7 +354,7 @@ class AppConfigServer extends ChangeNotifier {
       'email_address': 'ईमेल पता',
       'password': 'पासवर्ड',
       'google_continue': 'गूगल के साथ जारी रखें',
-      'new_to_spectrum': 'न्यूट्रीस्कैन में नए हैं?',
+      'new_to_spectrum': 'न्यूट्रीविज़न में नए हैं?',
       'maintain_weight': 'वजन बनाए रखें',
       'calorie_deficit': 'स्थायी वजन घटाने के लिए कैलोरी की कमी',
       'high_protein': 'मांसपेशियों की वृद्धि के लिए उच्च प्रोटीन',

@@ -1,0 +1,13 @@
+# Environment files
+.env
+.env.*
+
+# Firebase / Google credentials
+serviceAccountKey.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+*.log

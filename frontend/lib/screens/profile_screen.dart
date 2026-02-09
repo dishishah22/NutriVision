@@ -67,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final String displayName = user?.displayName?.isNotEmpty == true ? user!.displayName! : 'Spectrum User';
+    final String displayName = user?.displayName?.isNotEmpty == true ? user!.displayName! : 'NutriVision User';
     final String email = user?.email ?? 'user@example.com';
     final String photoUrl = user?.photoURL ?? '';
     final bool isDark = _appConfig.isDarkMode;
@@ -148,12 +148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   color: Colors.blue,
                   onTap: () => _showPersonalInfoDialog(displayName, email),
                 ),
-                _ProfileItem(
-                  icon: Icons.notifications_none_rounded, 
-                  label: _appConfig.translate('notifications'), 
-                  color: Colors.orange,
-                  onTap: () => _showNotificationSettings(),
-                ),
+
                 _ProfileItem(
                   icon: Icons.security_rounded, 
                   label: _appConfig.translate('privacy'), 

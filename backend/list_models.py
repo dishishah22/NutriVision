@@ -1,12 +1,12 @@
-from google import genai
-import os
+import google.genai as genai
 
-GOOGLE_API_KEY = "AIzaSyCgP1gBUMWCB2HWnusmtxgmIZBElZxhyU0"
-client = genai.Client(api_key=GOOGLE_API_KEY)
+GOOGLE_API_KEY = "AIzaSyBsgZ1YAz_NZfuDzLhtLQFTNZQC0_FDwD4"
+genai.configure(api_key=GOOGLE_API_KEY)
 
-print("Listing models...")
+print("Listing supported models:")
 try:
-    for m in client.models.list():
-        print(f"Model: {m}")
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            print(f"Model found: {m.name}")
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"Error listing models: {e}")

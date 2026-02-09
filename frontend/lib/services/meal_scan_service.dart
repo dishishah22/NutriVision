@@ -15,11 +15,15 @@ class MealScanService {
   }
 
   /// Scan meal image and get nutrition analysis
-  static Future<Map<String, dynamic>> scanMeal(File imageFile) async {
+  static Future<Map<String, dynamic>> scanMeal(File imageFile, String userId) async {
     try {
       final uri = Uri.parse("$baseUrl/analyze-food");
 
       final request = http.MultipartRequest("POST", uri);
+      
+      // Inject Login ID for Firebase tracking
+      request.fields['login_id'] = userId;
+
       request.files.add(
         await http.MultipartFile.fromPath(
           "image", // MUST match FastAPI param name
@@ -34,10 +38,19 @@ class MealScanService {
         throw Exception("Server error ${response.statusCode}: ${response.body}");
       }
 
-      return {
-        "success": true,
-        "data": jsonDecode(response.body),
-      };
+      final data = jsonDecode(response.body);
+      
+      if (data["status"] == "success" || data["status"] == "failure") {
+        return {
+          "success": true,
+          "data": data,
+        };
+      } else {
+        return {
+          "success": false,
+          "error": data["message"] ?? "Unknown error",
+        };
+      }
     } catch (e) {
       return {
         "success": false,

@@ -2,7 +2,7 @@ from google import genai
 from PIL import Image
 import io
 
-GOOGLE_API_KEY = "AIzaSyCgP1gBUMWCB2HWnusmtxgmIZBElZxhyU0"
+GOOGLE_API_KEY = "AIzaSyBsgZ1YAz_NZfuDzLhtLQFTNZQC0_FDwD4"
 client = genai.Client(api_key=GOOGLE_API_KEY)
 
 # Create dummy image

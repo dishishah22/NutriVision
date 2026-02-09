@@ -13,6 +13,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:spectrum_flutter/services/app_config_server.dart';
 
+import 'package:provider/provider.dart';
+import 'package:spectrum_flutter/providers/user_nutrition_provider.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -45,37 +48,42 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Spectrum',
-      debugShowCheckedModeBanner: false,
-      themeMode: _appConfig.themeMode,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        scaffoldBackgroundColor: AppColors.background,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.accent,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => UserNutritionProvider()),
+      ],
+      child: MaterialApp(
+        title: 'NutriVision',
+        debugShowCheckedModeBanner: false,
+        themeMode: _appConfig.themeMode,
+        theme: ThemeData(
+          useMaterial3: true,
           brightness: Brightness.light,
+          scaffoldBackgroundColor: AppColors.background,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: AppColors.accent,
+            brightness: Brightness.light,
+          ),
+          textTheme: GoogleFonts.outfitTextTheme(ThemeData.light().textTheme),
         ),
-        textTheme: GoogleFonts.outfitTextTheme(ThemeData.light().textTheme),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF111827),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.accent,
+        darkTheme: ThemeData(
+          useMaterial3: true,
           brightness: Brightness.dark,
+          scaffoldBackgroundColor: const Color(0xFF111827),
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: AppColors.accent,
+            brightness: Brightness.dark,
+          ),
+          textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
         ),
-        textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
+        locale: _appConfig.locale,
+        home: const AuthWrapper(),
+        routes: {
+          '/login': (context) => const LoginScreen(),
+          '/signup': (context) => const SignupScreen(),
+          '/home': (context) => const HomeScreen(),
+        },
       ),
-      locale: _appConfig.locale,
-      home: const AuthWrapper(),
-      routes: {
-        '/login': (context) => const LoginScreen(),
-        '/signup': (context) => const SignupScreen(),
-        '/home': (context) => const HomeScreen(),
-      },
     );
   }
 }
@@ -91,7 +99,29 @@ class AuthWrapper extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.active) {
           final User? user = snapshot.data;
-          return user == null ? const LoginScreen() : const FitnessSyncDashboard();
+          
+          // Sync User ID with Nutrition Provider
+          if (user != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+               // Use read to avoid unnecessary rebuilds of AuthWrapper
+               // We only want to set the ID if it's different to prevent loops, 
+               // but setUserId in provider can handle that check internally if needed.
+               // For now, we just set it. provider.setUserId checks usually aren't strict, 
+               // let's double check provider logic. 
+               // Adding a check here is safer.
+               final provider = context.read<UserNutritionProvider>();
+               if (provider.userId != user.uid) {
+                 provider.setUserId(user.uid);
+               }
+            });
+            return const FitnessSyncDashboard();
+          } else {
+             // Clear user on logout
+             WidgetsBinding.instance.addPostFrameCallback((_) {
+                context.read<UserNutritionProvider>().clearUser();
+             });
+             return const LoginScreen();
+          }
         }
         return const Scaffold(
           body: Center(child: CircularProgressIndicator()),

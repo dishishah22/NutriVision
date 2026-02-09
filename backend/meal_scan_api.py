@@ -1,47 +1,65 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
+import os
+import re
+import datetime
+import traceback
+import time
 import io
 import json
-import re
-import google.generativeai as genai
-import traceback
+import requests
+from PIL import Image
+from fastapi import FastAPI, File, UploadFile, Form, Query
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
-# ================= GEMINI CONFIG =================
+# New Architecture Imports
+from ai_providers.ai_router import AIRouter
+from firebase_config import save_scan_to_firebase
 
-GOOGLE_API_KEY = "AIzaSyCgP1gBUMWCB2HWnusmtxgmIZBElZxhyU0"
-genai.configure(api_key=GOOGLE_API_KEY)
+# ================= LOAD ENVIRONMENT =================
+# This looks for the .env file in the current directory (backend/api)
+load_dotenv()
 
-# Using stable library google-generativeai
-MODEL_NAME = "models/gemini-2.5-flash"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# 🔥 JSON PROMPT
+# Initialize Router with keys from .env
+ai_router = AIRouter(GEMINI_API_KEY, OPENROUTER_API_KEY)
+
+# 🔥 AI IMAGE PROMPT
 prompt = """
-Analyze this food image. 
-Return a STRICT JSON object (no Markdown backticks) with this exact structure:
+Analyze this food image. If there are multiple dishes then calorie is above, detect all of them and include their information in the same JSON structure.  
+
+Return a STRICT JSON object in this exact format:
+
 {
     "Food": "Name of the dish",
     "Classification": "Veg" or "Non-Veg",
     "Ingredients": {
-        "Raw Material": ["List", "of", "items"],
-        "Spices": [],
-        "Oils": [],
-        "Additives": []
+        "Raw Material": ["List of main ingredients"],
+        "Spices": ["List of spices"],
+        "Oils": ["List of oils used"],
+        "Flavour Enhancers": ["List if any"],
+        "Colors": ["List if any"]
     },
-    "Allergies": ["List", "of", "allergies"],
+    "Allergies": ["List of potential allergens"],
     "Nutrients": {
-        "Carbohydrates": 0.0,
-        "Proteins": 0.0,
-        "Fats": 0.0
+        "Calories": "Total kcal per 100g",
+        "Protein": "g per 100g",
+        "Carbohydrates": "g per 100g",
+        "Fat": "g per 100g",
+        "Fiber": "g per 100g",
+        "Sugar": "g per 100g"
     }
 }
-Values for Nutrients should be float numbers representing grams per 100g (approx).
-Example: "Carbohydrates": 12.5
+
+**Rules:**
+1. If there are multiple dishes, combine their information in this single JSON by separating each dish’s values clearly.
+2. Ensure accuracy. If any information is unknown, use "Unknown".
+3. Only return JSON. DO NOT include any extra text.
 """
 
 # ================= FASTAPI APP =================
-
-app = FastAPI(title="Food Calorie Analyzer API")
+app = FastAPI(title="Unified Food & Barcode AI API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,86 +68,125 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ================= HELPER =================
+@app.get("/health")
+def health():
+    return {"status": "ok", "message": "Backend is reachable"}
 
-def calculate_calories_and_range(carbs, protein, fat):
-    calories = (carbs * 4) + (protein * 4) + (fat * 9)
+# ================= HELPERS =================
+def clean_val(val):
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        match = re.search(r"(\d+(\.\d+)?)", val)
+        return float(match.group(1)) if match else 0.0
+    return 0.0
+
+def extract_macros_and_calories(nutrients):
+    cals = clean_val(nutrients.get("Calories", 0))
     return {
-        "min": round(calories * 0.9),
-        "max": round(calories * 1.2)
+        "calories": cals,
+        "protein": clean_val(nutrients.get("Protein", 0)),
+        "carbs": clean_val(nutrients.get("Carbohydrates", 0)),
+        "fat": clean_val(nutrients.get("Fat", 0))
     }
 
-# ================= API ENDPOINT =================
-
+# ================= API ENDPOINTS =================
 @app.post("/analyze-food")
-async def analyze_food(image: UploadFile = File(...)):
-    print(f"📥 REQUEST RECEIVED: {image.filename}")
+async def analyze_food(image: UploadFile = File(...), login_id: str = Form(...)):
     try:
         image_bytes = await image.read()
-        img = Image.open(io.BytesIO(image_bytes))
-        print("✅ Image loaded")
-
-        print(f"🚀 Sending to Gemini ({MODEL_NAME})...")
+        res_data, provider, model = ai_router.analyze_food(prompt, image_bytes)
         
-        # Use GenerativeModel from google-generativeai
-        model = genai.GenerativeModel(MODEL_NAME)
-        
-        # Standard generation call
-        response = model.generate_content([prompt, img])
-        
-        raw_text = response.text
-        print(f"✅ Gemini Response Received (Length: {len(raw_text)})")
-        
-        # 🐛 DEBUG: Write raw response to file
-        with open("gemini_response.log", "w", encoding="utf-8") as f:
-            f.write(raw_text)
+        if not res_data:
+            return {"status": "failure", "message": "AI fallback exhausted."}
 
-        # 🧹 Clean Markdown if present
-        cleaned_json = raw_text.replace("```json", "").replace("```", "").strip()
-        
-        # 🧩 Parse JSON
-        data = json.loads(cleaned_json)
-        print("✅ JSON Parsed successfully")
+        nutrients = res_data.get("Nutrients", res_data)
+        nutrition_info = extract_macros_and_calories(nutrients)
 
-        # 🧮 Extract Data
-        nutrients = data.get("Nutrients", {})
-        carbs = float(nutrients.get("Carbohydrates", 0))
-        protein = float(nutrients.get("Proteins", 0))
-        fat = float(nutrients.get("Fats", 0))
+        save_scan_to_firebase(
+            login_id=login_id,
+            scan_type="meal_scan",
+            food_name=res_data.get("Food", "Unknown Meal"),
+            calories=nutrition_info["calories"],
+            protein=nutrition_info["protein"],
+            fat=nutrition_info["fat"],
+            carbs=nutrition_info["carbs"],
+            ai_provider=f"{provider}:{model}",
+            raw_response=res_data
+        )
 
-        cal_range = calculate_calories_and_range(carbs, protein, fat)
-
-        # 📦 Format for Frontend
-        result = {
-            "food_name": data.get("Food", "Unknown Meal"),
-            "classification": data.get("Classification", "Unknown"),
-            "ingredients": {
-                "raw_material": data.get("Ingredients", {}).get("Raw Material", []),
-                "spices": data.get("Ingredients", {}).get("Spices", []),
-                "oils": data.get("Ingredients", {}).get("Oils", []),
-                "additives": data.get("Ingredients", {}).get("Additives", [])
-            },
-            "allergies": data.get("Allergies", []),
+        cals = nutrition_info["calories"]
+        legacy_compat_data = {
+            "food_name": res_data.get("Food", "Unknown Meal"),
+            "classification": res_data.get("Classification", "Unknown"),
             "nutrition_per_100g": {
-                "carbs_g_per_100g": carbs,
-                "protein_g_per_100g": protein,
-                "fat_g_per_100g": fat,
-                "calories_range_per_100g": cal_range
-            }
+                "calories_range_per_100g": {"min": max(0, cals-20), "max": cals+20},
+                "protein_g_per_100g": nutrition_info["protein"],
+                "carbs_g_per_100g": nutrition_info["carbs"],
+                "fat_g_per_100g": nutrition_info["fat"],
+                "fiber_g_per_100g": clean_val(nutrients.get("Fiber", 0)),
+                "sugar_g_per_100g": clean_val(nutrients.get("Sugar", 0))
+            },
+            "ingredients": {
+                "raw_material": res_data.get("Ingredients", {}).get("Raw Material", []),
+                "spices": res_data.get("Ingredients", {}).get("Spices", []),
+                "oils": res_data.get("Ingredients", {}).get("Oils", []),
+                "flavour_enhancers": res_data.get("Ingredients", {}).get("Flavour Enhancers", []),
+                "colors": res_data.get("Ingredients", {}).get("Colors", [])
+            },
+            "allergies": res_data.get("Allergies", [])
         }
 
-        print("📤 Sending structured data to frontend")
-        return result
-
-    except json.JSONDecodeError as je:
-        print(f"❌ JSON ERROR: {str(je)}")
-        return {"error": "Failed to parse AI response", "details": str(je)}
+        return {
+            "status": "success",
+            "scan_type": "meal_scan",
+            "food_name": legacy_compat_data["food_name"],
+            "nutrition": nutrition_info,
+            "ai_provider": provider,
+            "created_at": datetime.datetime.now().isoformat(),
+            "full_data": legacy_compat_data
+        }
     except Exception as e:
-        error_msg = f"❌ GENERAL ERROR: {str(e)}\n{traceback.format_exc()}"
-        print(error_msg)
-        with open("backend_debug.log", "a", encoding="utf-8") as f:
-            f.write(error_msg + "\n")
-        
-        # Provide more detail for debugging
-        from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=str(e))
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+@app.get("/scan/{barcode}")
+def scan_barcode(barcode: str, login_id: str = Query("anonymous_user")):
+    url = f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json"
+    try:
+        response = requests.get(url, timeout=5)
+        product = response.json().get("product", {})
+        if not product: return {"status": "failure", "message": "Not found"}
+
+        nutriments = product.get("nutriments", {})
+        nutrition_info = {
+            "calories": float(nutriments.get("energy-kcal_100g", 0)),
+            "protein": float(nutriments.get("proteins_100g", 0)),
+            "fat": float(nutriments.get("fat_100g", 0)),
+            "carbs": float(nutriments.get("carbohydrates_100g", 0))
+        }
+
+        save_scan_to_firebase(
+            login_id=login_id,
+            scan_type="barcode_scan",
+            food_name=product.get("product_name", "Unknown Product"),
+            calories=nutrition_info["calories"],
+            protein=nutrition_info["protein"],
+            fat=nutrition_info["fat"],
+            carbs=nutrition_info["carbs"],
+            ai_provider="open_food_facts",
+            raw_response=product
+        )
+
+        return {
+            "status": "success",
+            "product_name": product.get("product_name", "Unknown Product"),
+            "nutrition": nutrition_info,
+            "created_at": datetime.datetime.now().isoformat()
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/")
+def root():
+    return {"status": "running", "provider": "Unified Nutrition AI"}

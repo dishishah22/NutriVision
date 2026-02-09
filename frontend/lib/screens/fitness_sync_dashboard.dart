@@ -8,7 +8,11 @@ import 'package:spectrum_flutter/screens/profile_screen.dart';
 import 'package:spectrum_flutter/screens/settings_screen.dart';
 import 'package:spectrum_flutter/services/app_config_server.dart';
 import 'package:spectrum_flutter/screens/barcode_scan_screen.dart';
-
+import 'package:spectrum_flutter/screens/nutrition_history_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:spectrum_flutter/providers/user_nutrition_provider.dart';
+import 'package:spectrum_flutter/models/nutrition_models.dart';
+import 'package:spectrum_flutter/screens/home_screen.dart';
 
 class FitnessSyncDashboard extends StatefulWidget {
   const FitnessSyncDashboard({super.key});
@@ -20,6 +24,7 @@ class FitnessSyncDashboard extends StatefulWidget {
 class _FitnessSyncDashboardState extends State<FitnessSyncDashboard> {
   int _selectedIndex = 0;
   final _appConfig = AppConfigServer();
+  int _homeScreenRebuildKey = 0; // Changes to force HomeScreen rebuild
 
   @override
   void initState() {
@@ -34,6 +39,17 @@ class _FitnessSyncDashboardState extends State<FitnessSyncDashboard> {
   }
 
   void _update() => setState(() {});
+  
+  void _onTabTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+      // Force HomeScreen to rebuild when switching to home tab
+      if (index == 0) {
+        _homeScreenRebuildKey++;
+        print("🏠 [DEBUG] Switched to Home tab - forcing rebuild with key: $_homeScreenRebuildKey");
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +59,7 @@ class _FitnessSyncDashboardState extends State<FitnessSyncDashboard> {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          _buildHomeDashboard(context),
+          HomeScreen(key: ValueKey(_homeScreenRebuildKey)),
           const BarcodeScanScreen(),
           const AnalyticsScreen(),
           const SettingsScreen(),
@@ -104,7 +120,7 @@ class _FitnessSyncDashboardState extends State<FitnessSyncDashboard> {
   Widget _buildNavItem(IconData icon, String label, int index) {
     bool isActive = _selectedIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
+      onTap: () => _onTabTapped(index),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         color: Colors.transparent, // Better tap target
@@ -145,16 +161,14 @@ class _FitnessSyncDashboardState extends State<FitnessSyncDashboard> {
         ),
         Row(
           children: [
-            Icon(Icons.notifications_none_outlined, color: isDark ? Colors.white : AppColors.black),
-            const SizedBox(width: 16),
             GestureDetector(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen())),
               child: CircleAvatar(
                 radius: 18,
-                backgroundColor: AppColors.accent,
+                backgroundColor: const Color(0xFF1DB98D).withValues(alpha: 0.15),
                 backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
                 child: user?.photoURL == null 
-                  ? Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                  ? Text(initial, style: const TextStyle(color: Color(0xFF1DB98D), fontWeight: FontWeight.bold))
                   : null,
               ),
             ),
@@ -196,6 +210,9 @@ class _FitnessSyncDashboardState extends State<FitnessSyncDashboard> {
 
   Widget _buildHomeDashboard(BuildContext context) {
     final bool isDark = _appConfig.isDarkMode;
+    final provider = Provider.of<UserNutritionProvider>(context);
+    const double goalCalories = 2000;
+
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -209,152 +226,188 @@ class _FitnessSyncDashboardState extends State<FitnessSyncDashboard> {
 
             const SizedBox(height: 24),
 
-            // Today's Progress Card
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1F2937) : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.lightGrey.withAlpha(isDark ? 20 : 128)),
-                boxShadow: [BoxShadow(color: Colors.black.withAlpha(isDark ? 0 : 8), blurRadius: 10, offset: const Offset(0, 4))],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_appConfig.translate('progress_title'), style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      RichText(
-                        text: TextSpan(
-                          children: [
-                            TextSpan(text: '1261', style: GoogleFonts.outfit(color: isDark ? Colors.white : AppColors.black, fontSize: 32, fontWeight: FontWeight.bold)),
-                            TextSpan(text: ' / 2000 kcal', style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 18)),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: AppColors.accent.withAlpha(26), shape: BoxShape.circle),
-                        child: const Icon(Icons.track_changes_rounded, color: AppColors.accent, size: 28),
+            // Today's Progress Card (DYNAMIC)
+            StreamBuilder<NutritionSummaryModel>(
+              stream: provider.summaryStream,
+              builder: (context, AsyncSnapshot<NutritionSummaryModel> snapshot) {
+                final summary = snapshot.data ?? NutritionSummaryModel.empty();
+                
+                return Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1F2937) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.05),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Row(
-                      children: [
-                        Expanded(flex: 1261, child: Container(height: 10, color: AppColors.accent)),
-                        Expanded(flex: 739, child: Container(height: 10, color: isDark ? Colors.white10 : AppColors.remainingColor)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
                     children: [
-                      Text('739 ${_appConfig.translate('kcal_remaining')}', style: GoogleFonts.outfit(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: 14)),
-                      Text('2 ${_appConfig.translate('meals_logged')}', style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 14)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Scan Your Meal Action
-            GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const MealScanScreen())),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1F2937) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.lightGrey.withAlpha(isDark ? 20 : 128)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(16)),
-                      child: const Icon(Icons.camera_alt_rounded, color: Colors.white),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(_appConfig.translate('scan_meal'), style: GoogleFonts.outfit(color: isDark ? Colors.white : AppColors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: Colors.orange.withAlpha(26), borderRadius: BorderRadius.circular(4)),
-                                child: const Text('✨ AI', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
-                              ),
+                              Text(_appConfig.translate('progress_title'), style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 14)),
+                              const SizedBox(height: 4),
+                              Text('${summary.totalCalories.toInt()} / ${goalCalories.toInt()} kcal', 
+                                style: GoogleFonts.outfit(color: isDark ? Colors.white : AppColors.black, fontSize: 24, fontWeight: FontWeight.bold)),
                             ],
                           ),
-                          Text(_appConfig.translate('scan_desc'), style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 13)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(color: AppColors.accent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                            child: Text('${((summary.totalCalories/goalCalories)*100).toInt()}%', style: GoogleFonts.outfit(color: AppColors.accent, fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BarcodeScanScreen())),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1F2937) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.lightGrey.withAlpha(isDark ? 20 : 128)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.blueAccent, borderRadius: BorderRadius.circular(16)),
-                      child: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 20),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: (summary.totalCalories / goalCalories).clamp(0, 1),
+                          minHeight: 12,
+                          backgroundColor: isDark ? Colors.white10 : AppColors.lightGrey,
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accent),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
                         children: [
-                          Text('Scan Barcode', style: GoogleFonts.outfit(color: isDark ? Colors.white : AppColors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-                          Text('Get instant facts from product barcodes', style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 13)),
+                          Icon(Icons.check_circle_rounded, color: AppColors.accent, size: 16),
+                          const SizedBox(width: 8),
+                          Text('${(goalCalories - summary.totalCalories).clamp(0, goalCalories).toInt()} ${_appConfig.translate('kcal_remaining')}', 
+                            style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 13)),
                         ],
                       ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded, color: AppColors.grey),
-                  ],
-                ),
-              ),
+                    ],
+                  ),
+                );
+              },
             ),
+
+            const SizedBox(height: 16),
+
+            // Scan Actions
+            _buildScanAction(context, isDark, true),
+            const SizedBox(height: 16),
+            _buildScanAction(context, isDark, false),
 
             const SizedBox(height: 32),
 
-            // Today's Meals Section
+            // Today's Meals Section (DYNAMIC)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(_appConfig.translate('todays_meals'), style: GoogleFonts.outfit(color: isDark ? Colors.white : AppColors.black, fontSize: 18, fontWeight: FontWeight.bold)),
+                TextButton(
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const NutritionHistoryScreen())),
+                  child: Text("View History", style: GoogleFonts.outfit(color: AppColors.accent, fontWeight: FontWeight.bold)),
+                ),
               ],
             ),
             const SizedBox(height: 16),
             
-            _buildMealListItem(context, _appConfig.translate('breakfast'), '8:09 AM', '685 kcal', 0.6, Icons.wb_sunny_rounded, Colors.orange),
-            _buildMealListItem(context, _appConfig.translate('lunch'), '1:41 PM', '576 kcal', 0.45, Icons.cloud_outlined, AppColors.accent),
-            _buildMealListItem(context, _appConfig.translate('dinner'), '7:30 PM', '420 kcal', 0.3, Icons.nightlight_round, Colors.indigo),
+            StreamBuilder<List<NutritionScanModel>>(
+              stream: provider.scansStream,
+              builder: (context, AsyncSnapshot<List<NutritionScanModel>> snapshot) {
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return _buildEmptyMeals(isDark);
+                }
+                
+                final now = DateTime.now();
+                final todayScans = snapshot.data!.where((s) => 
+                  s.createdAt.year == now.year && 
+                  s.createdAt.month == now.month && 
+                  s.createdAt.day == now.day
+                ).toList();
+
+                if (todayScans.isEmpty) return _buildEmptyMeals(isDark);
+
+                return Column(
+                  children: todayScans.map<Widget>((scan) => _buildMealListItem(
+                    context, 
+                    scan.foodName, 
+                    "${scan.createdAt.hour}:${scan.createdAt.minute.toString().padLeft(2, '0')}", 
+                    '${scan.calories.toInt()} kcal', 
+                    0.5, // Ad-hoc progress
+                    scan.scanType == 'meal_scan' ? Icons.camera_alt_rounded : Icons.qr_code_scanner_rounded,
+                    scan.scanType == 'meal_scan' ? AppColors.accent : Colors.blueAccent,
+                  )).toList(),
+                );
+              },
+            ),
             
             const SizedBox(height: 100),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyMeals(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1F2937) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.lightGrey.withAlpha(isDark ? 20 : 128)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.restaurant_menu_rounded, color: AppColors.grey.withAlpha(100), size: 48),
+          const SizedBox(height: 16),
+          Text("No meals logged today", style: GoogleFonts.outfit(color: AppColors.grey)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScanAction(BuildContext context, bool isDark, bool isAI) {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => isAI ? const MealScanScreen() : const BarcodeScanScreen())),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1F2937) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.lightGrey.withAlpha(isDark ? 20 : 128)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: isAI ? AppColors.accent : Colors.blueAccent, borderRadius: BorderRadius.circular(16)),
+              child: Icon(isAI ? Icons.camera_alt_rounded : Icons.qr_code_scanner_rounded, color: Colors.white),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(isAI ? _appConfig.translate('scan_meal') : "Scan Barcode", style: GoogleFonts.outfit(color: isDark ? Colors.white : AppColors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                      if (isAI) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.orange.withAlpha(26), borderRadius: BorderRadius.circular(4)),
+                          child: const Text('✨ AI', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Text(isAI ? _appConfig.translate('scan_desc') : "Get instant facts from barcodes", style: GoogleFonts.outfit(color: AppColors.grey, fontSize: 13)),
+                ],
+              ),
+            ),
           ],
         ),
       ),

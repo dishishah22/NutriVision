@@ -31,6 +31,14 @@ dependencies:
   timezone: ^0.10.1
   mobile_scanner: ^7.1.4
   http: ^1.6.0
+  provider: ^6.1.5+1
+  cloud_firestore: ^6.1.2
+  url_launcher: ^6.3.2
+  app_links: ^6.4.1
+  shared_preferences: ^2.5.3
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.2.2
+  # health: ^10.0.0  # Temporarily removed due to build issues
 
 
 dev_dependencies:
@@ -38,9 +46,18 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.2
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.jpeg"
+  adaptive_icon_background: "#1DB98D"
+  adaptive_icon_foreground: "assets/images/logo.jpeg"
 
 flutter:
   uses-material-design: true
 
   assets:
     - assets/models/1.tflite
+    - assets/images/

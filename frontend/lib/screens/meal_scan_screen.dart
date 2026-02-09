@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:spectrum_flutter/services/meal_scan_service.dart';
 import 'package:spectrum_flutter/screens/nutritional_insights_screen.dart';
 import 'package:spectrum_flutter/theme/app_colors.dart';
+import 'package:provider/provider.dart';
+import 'package:spectrum_flutter/providers/user_nutrition_provider.dart';
 
 class MealScanScreen extends StatefulWidget {
   const MealScanScreen({super.key});
@@ -34,12 +36,20 @@ class _MealScanScreenState extends State<MealScanScreen> {
   Future<void> _analyzeFood() async {
     if (_image == null) return;
 
+    final nutritionProvider = Provider.of<UserNutritionProvider>(context, listen: false);
+    final userId = nutritionProvider.userId;
+    
+    if (userId == null) {
+      _showError('User not identified');
+      return;
+    }
+
     setState(() {
       _isAnalyzing = true;
     });
 
     try {
-      final result = await MealScanService.scanMeal(_image!);
+      final result = await MealScanService.scanMeal(_image!, userId);
       
       if (mounted) {
         setState(() {
@@ -47,11 +57,16 @@ class _MealScanScreenState extends State<MealScanScreen> {
         });
 
         if (result['success'] == true) {
+          final data = result['data'];
+          
+          // 📦 standard backend structure: "nutrition": {"calories": X, ...}
+          final nutrition = data['nutrition'] ?? {};
+          
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => NutritionalInsightsScreen(
-                apiResult: result['data'],
+                apiResult: data['full_data'] ?? data,
               ),
             ),
           );

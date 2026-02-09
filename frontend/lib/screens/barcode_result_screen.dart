@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:spectrum_flutter/services/barcode_service.dart';
+import 'package:provider/provider.dart';
+import 'package:spectrum_flutter/providers/user_nutrition_provider.dart';
 
 class BarcodeResultScreen extends StatefulWidget {
   final String barcode;
@@ -24,11 +26,23 @@ class _BarcodeResultScreenState extends State<BarcodeResultScreen> {
 
   Future<void> _fetchData() async {
     try {
-      final result = await ApiService.fetchProductByBarcode(widget.barcode);
+      final nutritionProvider = Provider.of<UserNutritionProvider>(context, listen: false);
+      final userId = nutritionProvider.userId;
+      
+      if (userId == null) {
+        setState(() {
+          _error = "User not identified";
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final result = await ApiService.fetchProductByBarcode(widget.barcode, userId);
       if (mounted) {
         setState(() {
           if (result['success'] == true) {
             _productData = result['data'];
+            // Backend now handles the save!
           } else {
             _error = result['error'] ?? 'Unknown error occurred';
           }
@@ -42,6 +56,32 @@ class _BarcodeResultScreenState extends State<BarcodeResultScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _saveScan(Map<String, dynamic> data) async {
+    try {
+      final provider = Provider.of<UserNutritionProvider>(context, listen: false);
+      final nutriments = data['nutriments'] ?? {};
+      
+      double getVal(String key) {
+         final v = nutriments[key];
+         if (v is num) return v.toDouble();
+         if (v is String) return double.tryParse(v) ?? 0.0;
+         return 0.0;
+      }
+
+      await provider.addScan(
+        scanType: 'barcode_scan',
+        foodName: data['product_name'] ?? 'Scanned Product',
+        calories: getVal('energy-kcal_100g'),
+        protein: getVal('proteins_100g'),
+        fat: getVal('fat_100g'),
+        carbs: getVal('carbohydrates_100g'),
+        rawApiResponse: data,
+      );
+    } catch (e) {
+      debugPrint("Auto-save failed: $e");
     }
   }
 

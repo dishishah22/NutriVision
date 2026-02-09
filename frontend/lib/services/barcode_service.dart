@@ -1,22 +1,31 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = "https://samyak000-nutrition-barcode.hf.space";
+  /// Change ONLY this when backend IP changes
+  static String get baseUrl {
+    if (Platform.isAndroid) {
+      return "http://10.110.80.87:8500"; // Assuming same host/port or separate? 
+    } else {
+      return "http://10.110.80.87:8500";
+    }
+  }
 
   static Future<Map<String, dynamic>> fetchProductByBarcode(
-      String barcode) async {
+      String barcode, String userId) async {
     try {
-      final url = Uri.parse("$baseUrl/scan/$barcode");
+      final url = Uri.parse("$baseUrl/scan/$barcode?login_id=$userId");
       final response = await http.get(url);
 
       if (response.statusCode != 200) {
         throw Exception("Server error ${response.statusCode}");
       }
 
+      final data = jsonDecode(response.body);
       return {
-        "success": true,
-        "data": jsonDecode(response.body),
+        "success": data["status"] == "success",
+        "data": data,
       };
     } catch (e) {
       return {
